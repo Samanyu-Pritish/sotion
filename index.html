@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sotion — Personal Productivity Workspace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <!-- SQLite WebAssembly Engine (sql.js) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/sql-wasm.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
+</head>
+<body>
+
+  <!-- ========================================================================= -->
+  <!-- 1. STARTUP PASSWORD LOCK SCREEN (Password: "remove")                      -->
+  <!-- ========================================================================= -->
+  <div id="lock-screen" class="lock-overlay">
+    <div class="lock-card">
+      <div class="lock-icon-badge">
+        <i data-lucide="lock" class="icon-lg"></i>
+      </div>
+      <h2 class="lock-title">Sotion Workspace</h2>
+      <p class="lock-subtitle">Enter your master password to unlock your SQLite database.</p>
+      
+      <form id="lock-form" class="lock-form" onsubmit="handlePasswordSubmit(event)">
+        <div class="input-wrapper">
+          <i data-lucide="key-round" class="input-icon"></i>
+          <input 
+            type="password" 
+            id="password-input" 
+            class="input-field" 
+            placeholder="Enter password..." 
+            autocomplete="current-password" 
+            autofocus 
+            required 
+          />
+        </div>
+        <p id="password-error" class="error-msg hidden">
+          <i data-lucide="alert-circle" class="icon-sm"></i>
+          <span>Incorrect password. Please try again.</span>
+        </p>
+        <button type="submit" class="btn btn-primary btn-block">
+          <span>Unlock Workspace</span>
+          <i data-lucide="arrow-right" class="icon-sm"></i>
+        </button>
+      </form>
+
+      <div class="lock-footer">
+        <span class="badge-tag">🔒 End-to-End Local SQLite 3</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- 2. MAIN APPLICATION SHELL                                                 -->
+  <!-- ========================================================================= -->
+  <div id="app-shell" class="app-layout hidden">
+    
+    <!-- Mobile Header -->
+    <header class="mobile-nav">
+      <button class="icon-btn" onclick="toggleSidebar()" title="Toggle Sidebar">
+        <i data-lucide="menu"></i>
+      </button>
+      <div class="brand-mini">
+        <span class="brand-logo">S</span>
+        <span class="brand-name">Sotion</span>
+      </div>
+      <button class="icon-btn" onclick="openSearchModal()" title="Search">
+        <i data-lucide="search"></i>
+      </button>
+    </header>
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-icon">
+            <i data-lucide="layers" class="icon-md"></i>
+          </div>
+          <div class="brand-details">
+            <span class="brand-title">Sotion</span>
+            <span class="brand-sub">SQLite Workspace</span>
+          </div>
+        </div>
+        <button class="icon-btn close-sidebar-btn" onclick="toggleSidebar()" title="Close">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+
+      <!-- Quick Search Trigger -->
+      <div class="sidebar-search">
+        <button class="search-trigger-btn" onclick="openSearchModal()">
+          <i data-lucide="search" class="icon-sm"></i>
+          <span class="search-label">Quick Search...</span>
+          <kbd class="kbd-shortcut">Ctrl+K</kbd>
+        </button>
+      </div>
+
+      <!-- Navigation Links -->
+      <nav class="sidebar-nav">
+        <a href="#dashboard" class="nav-item active" id="nav-dashboard" onclick="navigateToDashboard()">
+          <i data-lucide="layout-dashboard" class="icon-sm"></i>
+          <span class="nav-label">Dashboard</span>
+          <span class="nav-badge" id="sidebar-badge-metric">0%</span>
+        </a>
+
+        <div class="nav-section-header">
+          <span class="section-title">COLLECTIONS</span>
+          <button class="icon-btn-ghost" onclick="openCollectionModal('create')" title="New Collection">
+            <i data-lucide="plus" class="icon-xs"></i>
+          </button>
+        </div>
+
+        <!-- Dynamic Collection List -->
+        <div id="sidebar-collections" class="nav-collection-list">
+          <!-- Populated dynamically via SQLite -->
+        </div>
+      </nav>
+
+      <!-- Sidebar Footer Controls -->
+      <div class="sidebar-footer">
+        <button class="btn btn-secondary btn-sm btn-block" onclick="openCollectionModal('create')">
+          <i data-lucide="folder-plus" class="icon-sm"></i>
+          <span>New Collection</span>
+        </button>
+
+        <div class="footer-actions">
+          <button class="icon-btn" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme">
+            <i data-lucide="moon" class="icon-sm"></i>
+          </button>
+          <button class="icon-btn" onclick="openDbModal()" title="SQLite Database & Backups">
+            <i data-lucide="database" class="icon-sm"></i>
+          </button>
+          <button class="icon-btn lock-action-btn" onclick="lockWorkspace()" title="Lock Workspace">
+            <i data-lucide="lock" class="icon-sm"></i>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Sidebar Backdrop for Mobile -->
+    <div id="sidebar-backdrop" class="sidebar-backdrop hidden" onclick="toggleSidebar()"></div>
+
+    <!-- Main Workspace Content -->
+    <main class="main-viewport">
+
+      <!-- ===================================================================== -->
+      <!-- VIEW 1: DASHBOARD VIEW                                                -->
+      <!-- ===================================================================== -->
+      <section id="view-dashboard" class="workspace-view">
+        <div class="view-header">
+          <div>
+            <h1 class="page-headline">Workspace Dashboard</h1>
+            <p class="page-tagline" id="dashboard-date-greeting">Welcome back to your offline-first personal workspace.</p>
+          </div>
+          <div class="header-actions">
+            <button class="btn btn-primary" onclick="openCollectionModal('create')">
+              <i data-lucide="plus" class="icon-sm"></i>
+              <span>New Collection</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Metrics Cards -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon-wrapper color-indigo">
+              <i data-lucide="folder" class="icon-md"></i>
+            </div>
+            <div class="stat-info">
+              <span class="stat-number" id="stat-collections-count">0</span>
+              <span class="stat-title">Collections</span>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon-wrapper color-sky">
+              <i data-lucide="file-text" class="icon-md"></i>
+            </div>
+            <div class="stat-info">
+              <span class="stat-number" id="stat-pages-count">0</span>
+              <span class="stat-title">Total Pages</span>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon-wrapper color-emerald">
+              <i data-lucide="check-circle-2" class="icon-md"></i>
+            </div>
+            <div class="stat-info">
+              <span class="stat-number" id="stat-completion-pct">0%</span>
+              <span class="stat-title">Task Badges Done</span>
+            </div>
+            <div class="progress-bar-track">
+              <div class="progress-bar-fill" id="stat-progress-bar" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon-wrapper color-amber">
+              <i data-lucide="clock" class="icon-md"></i>
+            </div>
+            <div class="stat-info">
+              <span class="stat-number" id="stat-pending-badges">0</span>
+              <span class="stat-title">Pending Tasks</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent & Upcoming Pages Section -->
+        <div class="dashboard-section">
+          <div class="section-top">
+            <div class="section-heading-group">
+              <h2 class="section-heading">Recent & Upcoming Pages</h2>
+              <span class="section-subtext">Quickly toggle task badges and update dates directly</span>
+            </div>
+          </div>
+          <div id="dashboard-recent-pages" class="pages-grid">
+            <!-- Populated via SQLite -->
+          </div>
+        </div>
+
+        <!-- Collections Section -->
+        <div class="dashboard-section">
+          <div class="section-top">
+            <div class="section-heading-group">
+              <h2 class="section-heading">All Collections</h2>
+              <span class="section-subtext">Organized folders and workspaces</span>
+            </div>
+          </div>
+          <div id="dashboard-collections-grid" class="collections-grid">
+            <!-- Populated via SQLite -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- VIEW 2: COLLECTION DETAIL VIEW                                        -->
+      <!-- ===================================================================== -->
+      <section id="view-collection" class="workspace-view hidden">
+        <div class="collection-banner" id="collection-banner">
+          <div class="banner-top">
+            <div class="collection-identity">
+              <div class="collection-big-icon" id="col-detail-icon-box">
+                <i data-lucide="folder" id="col-detail-icon"></i>
+              </div>
+              <div>
+                <h1 class="page-headline" id="col-detail-name">Collection Name</h1>
+                <p class="collection-desc" id="col-detail-desc">Collection description goes here.</p>
+              </div>
+            </div>
+            <div class="header-actions">
+              <button class="btn btn-primary" onclick="createNewPageInCurrentCollection()">
+                <i data-lucide="plus" class="icon-sm"></i>
+                <span>New Page</span>
+              </button>
+              <button class="btn btn-secondary" onclick="openCollectionModal('edit', currentCollectionId)">
+                <i data-lucide="settings" class="icon-sm"></i>
+                <span>Edit</span>
+              </button>
+              <button class="btn btn-danger-ghost" onclick="confirmDeleteCollection(currentCollectionId)">
+                <i data-lucide="trash-2" class="icon-sm"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Controls Bar (Filter, Sort, Layout Switch) -->
+          <div class="collection-toolbar">
+            <div class="search-filter-box">
+              <i data-lucide="search" class="icon-sm"></i>
+              <input 
+                type="text" 
+                id="collection-page-search" 
+                placeholder="Filter pages in this collection..." 
+                oninput="handleCollectionPageFilter(this.value)"
+              />
+            </div>
+            <div class="toolbar-controls">
+              <!-- Filter Dropdown -->
+              <div class="select-wrapper">
+                <select id="filter-status-select" onchange="renderCollectionPages()">
+                  <option value="all">All Pages</option>
+                  <option value="pending">With Pending Badges</option>
+                  <option value="completed">All Completed</option>
+                  <option value="has_date">With Due Date</option>
+                </select>
+              </div>
+
+              <!-- Sort Dropdown -->
+              <div class="select-wrapper">
+                <select id="sort-pages-select" onchange="renderCollectionPages()">
+                  <option value="date_desc">Newest Date</option>
+                  <option value="date_asc">Oldest Date</option>
+                  <option value="title_asc">Title (A-Z)</option>
+                  <option value="title_desc">Title (Z-A)</option>
+                  <option value="updated">Recently Updated</option>
+                </select>
+              </div>
+
+              <!-- View Switcher -->
+              <div class="view-switch-tabs">
+                <button class="tab-btn active" id="btn-view-grid" onclick="setViewMode('grid')" title="Grid View">
+                  <i data-lucide="layout-grid" class="icon-sm"></i>
+                </button>
+                <button class="tab-btn" id="btn-view-list" onclick="setViewMode('list')" title="List View">
+                  <i data-lucide="list" class="icon-sm"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pages Container -->
+        <div id="collection-pages-container" class="pages-grid">
+          <!-- Populated via SQLite -->
+        </div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- VIEW 3: DISTRACTION-FREE PAGE EDITOR                                  -->
+      <!-- ===================================================================== -->
+      <section id="view-editor" class="workspace-view hidden">
+        <div class="editor-header-bar">
+          <div class="editor-breadcrumbs">
+            <button class="breadcrumb-back-btn" onclick="navigateBackFromEditor()">
+              <i data-lucide="arrow-left" class="icon-sm"></i>
+              <span>Back</span>
+            </button>
+            <span class="crumb-separator">/</span>
+            <span class="crumb-collection" id="editor-crumb-collection" onclick="navigateBackFromEditor()">Collection</span>
+            <span class="crumb-separator">/</span>
+            <span class="crumb-title" id="editor-crumb-title">Untitled Page</span>
+          </div>
+
+          <div class="editor-status-actions">
+            <div class="autosave-status" id="editor-save-status">
+              <span class="status-dot"></span>
+              <span class="status-text">Saved to SQLite</span>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="exportCurrentPageMarkdown()" title="Export Markdown">
+              <i data-lucide="download" class="icon-xs"></i>
+              <span>Export .md</span>
+            </button>
+            <button class="icon-btn-danger" onclick="confirmDeletePage(currentPageId)" title="Delete Page">
+              <i data-lucide="trash-2" class="icon-sm"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="editor-body-wrapper">
+          <!-- Page Metadata (Title, Date, Badges) -->
+          <div class="page-meta-header">
+            <input 
+              type="text" 
+              id="editor-page-title" 
+              class="editor-title-input" 
+              placeholder="Untitled Page" 
+              oninput="handlePageTitleInput(this.value)"
+            />
+
+            <div class="editor-meta-row">
+              <!-- Date Button with Popover -->
+              <div class="meta-item">
+                <span class="meta-label"><i data-lucide="calendar" class="icon-xs"></i> Date:</span>
+                <button class="date-picker-trigger" id="editor-date-btn" onclick="openDatePopover(event, currentPageId)">
+                  <span id="editor-date-text">No Date</span>
+                  <i data-lucide="chevron-down" class="icon-xs"></i>
+                </button>
+              </div>
+
+              <!-- Badges Bar -->
+              <div class="meta-item flex-wrap-item">
+                <span class="meta-label"><i data-lucide="tag" class="icon-xs"></i> Task Badges:</span>
+                <div id="editor-badges-list" class="badges-tray">
+                  <!-- Badges inserted dynamically -->
+                </div>
+                <button class="btn-add-badge-inline" onclick="openBadgeModal('create', currentPageId)">
+                  <i data-lucide="plus" class="icon-xs"></i>
+                  <span>Add Badge</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Rich Text Formatting Toolbar -->
+          <div class="editor-toolbar">
+            <button type="button" class="toolbar-btn" data-command="bold" title="Bold (Ctrl+B)">
+              <i data-lucide="bold" class="icon-sm"></i>
+            </button>
+            <button type="button" class="toolbar-btn" data-command="italic" title="Italic (Ctrl+I)">
+              <i data-lucide="italic" class="icon-sm"></i>
+            </button>
+            <button type="button" class="toolbar-btn" data-command="underline" title="Underline (Ctrl+U)">
+              <i data-lucide="underline" class="icon-sm"></i>
+            </button>
+            <button type="button" class="toolbar-btn" data-command="strikeThrough" title="Strikethrough">
+              <i data-lucide="strikethrough" class="icon-sm"></i>
+            </button>
+
+            <span class="toolbar-divider"></span>
+
+            <button type="button" class="toolbar-btn" data-format="h1" title="Heading 1">H1</button>
+            <button type="button" class="toolbar-btn" data-format="h2" title="Heading 2">H2</button>
+            <button type="button" class="toolbar-btn" data-format="h3" title="Heading 3">H3</button>
+            <button type="button" class="toolbar-btn" data-format="p" title="Paragraph">¶</button>
+
+            <span class="toolbar-divider"></span>
+
+            <button type="button" class="toolbar-btn" data-command="insertUnorderedList" title="Bulleted List">
+              <i data-lucide="list" class="icon-sm"></i>
+            </button>
+            <button type="button" class="toolbar-btn" data-command="insertOrderedList" title="Numbered List">
+              <i data-lucide="list-ordered" class="icon-sm"></i>
+            </button>
+            <button type="button" class="toolbar-btn" onclick="insertChecklist()" title="Interactive Task Checklist">
+              <i data-lucide="check-square" class="icon-sm"></i>
+            </button>
+
+            <span class="toolbar-divider"></span>
+
+            <button type="button" class="toolbar-btn" data-format="blockquote" title="Quote">
+              <i data-lucide="quote" class="icon-sm"></i>
+            </button>
+            <button type="button" class="toolbar-btn" data-format="pre" title="Code Block">
+              <i data-lucide="code" class="icon-sm"></i>
+            </button>
+            <button type="button" class="toolbar-btn" data-command="insertHorizontalRule" title="Horizontal Divider">
+              <i data-lucide="minus" class="icon-sm"></i>
+            </button>
+          </div>
+
+          <!-- Document Canvas -->
+          <div 
+            id="editor-content" 
+            class="editor-canvas" 
+            contenteditable="true" 
+            spellcheck="true"
+            data-placeholder="Start typing your notes, plans, and ideas..."
+            oninput="handleEditorContentInput()"
+          ></div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- 3. GLOBAL MODALS                                                          -->
+  <!-- ========================================================================= -->
+
+  <!-- Collection Modal (Create & Edit) -->
+  <div id="modal-collection" class="modal-backdrop hidden" onclick="handleModalBackdropClick(event, 'modal-collection')">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="col-modal-title">New Collection</h3>
+        <button class="icon-btn" onclick="closeModal('modal-collection')"><i data-lucide="x"></i></button>
+      </div>
+
+      <!-- Tab Switcher -->
+      <div class="modal-tabs">
+        <button type="button" class="modal-tab-btn active" id="col-tab-btn-details" onclick="switchCollectionModalTab('details')">
+          <i data-lucide="sliders" class="icon-xs"></i>
+          <span>Details</span>
+        </button>
+        <button type="button" class="modal-tab-btn" id="col-tab-btn-badges" onclick="switchCollectionModalTab('badges')">
+          <i data-lucide="tag" class="icon-xs"></i>
+          <span>Badges for all pages</span>
+          <span class="tab-counter-badge" id="col-badges-count-badge">0</span>
+        </button>
+      </div>
+
+      <!-- TAB 1: DETAILS -->
+      <form id="col-details-form" onsubmit="handleSaveCollection(event)" class="modal-form">
+        <div class="form-group">
+          <label for="col-input-name">Collection Name</label>
+          <input type="text" id="col-input-name" class="input-field" placeholder="e.g. Work Projects, Study Notes..." required />
+        </div>
+        <div class="form-group">
+          <label for="col-input-desc">Description (Optional)</label>
+          <textarea id="col-input-desc" class="input-field textarea" rows="2" placeholder="Brief summary of this collection..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Accent Color</label>
+          <div class="color-palette" id="col-color-picker">
+            <button type="button" class="color-dot active" data-color="#6366f1" style="background: #6366f1;"></button>
+            <button type="button" class="color-dot" data-color="#3b82f6" style="background: #3b82f6;"></button>
+            <button type="button" class="color-dot" data-color="#06b6d4" style="background: #06b6d4;"></button>
+            <button type="button" class="color-dot" data-color="#10b981" style="background: #10b981;"></button>
+            <button type="button" class="color-dot" data-color="#f59e0b" style="background: #f59e0b;"></button>
+            <button type="button" class="color-dot" data-color="#ef4444" style="background: #ef4444;"></button>
+            <button type="button" class="color-dot" data-color="#ec4899" style="background: #ec4899;"></button>
+            <button type="button" class="color-dot" data-color="#8b5cf6" style="background: #8b5cf6;"></button>
+          </div>
+          <input type="hidden" id="col-selected-color" value="#6366f1" />
+        </div>
+        <div class="form-group">
+          <label>Icon</label>
+          <div class="icon-grid" id="col-icon-picker">
+            <button type="button" class="icon-option active" data-icon="folder"><i data-lucide="folder"></i></button>
+            <button type="button" class="icon-option" data-icon="bookmark"><i data-lucide="bookmark"></i></button>
+            <button type="button" class="icon-option" data-icon="star"><i data-lucide="star"></i></button>
+            <button type="button" class="icon-option" data-icon="code"><i data-lucide="code"></i></button>
+            <button type="button" class="icon-option" data-icon="book"><i data-lucide="book"></i></button>
+            <button type="button" class="icon-option" data-icon="zap"><i data-lucide="zap"></i></button>
+            <button type="button" class="icon-option" data-icon="target"><i data-lucide="target"></i></button>
+            <button type="button" class="icon-option" data-icon="check-circle"><i data-lucide="check-circle"></i></button>
+            <button type="button" class="icon-option" data-icon="briefcase"><i data-lucide="briefcase"></i></button>
+            <button type="button" class="icon-option" data-icon="compass"><i data-lucide="compass"></i></button>
+          </div>
+          <input type="hidden" id="col-selected-icon" value="folder" />
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-collection')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="col-submit-btn">Create Collection</button>
+        </div>
+      </form>
+
+      <!-- TAB 2: COLLECTION BADGES (APPLIES TO ALL PAGES) -->
+      <div id="col-badges-panel" class="modal-tab-panel hidden">
+        <div class="collection-badges-explainer">
+          <i data-lucide="info" class="icon-sm color-indigo"></i>
+          <span>Badges defined here automatically apply to <strong>all pages</strong> in this collection.</span>
+        </div>
+
+        <!-- Add / Edit Collection Badge Box -->
+        <div class="col-badge-form-box">
+          <div class="form-group">
+            <label for="col-badge-input-label" id="col-badge-form-title">Add Badge to All Pages</label>
+            <div class="input-inline-group">
+              <input type="text" id="col-badge-input-label" class="input-field" placeholder="e.g. Concept, Theory, Review..." />
+              <button type="button" class="btn btn-primary btn-sm" id="col-badge-save-btn" onclick="handleSaveCollectionBadge()">
+                <i data-lucide="plus" class="icon-xs"></i>
+                <span id="col-badge-save-text">Add Badge</span>
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm hidden" id="col-badge-cancel-edit-btn" onclick="cancelEditCollectionBadge()">
+                Cancel
+              </button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="label-sub">Badge Color:</label>
+            <div class="color-palette" id="col-badge-color-picker">
+              <button type="button" class="color-dot active" data-color="#3b82f6" style="background: #3b82f6;"></button>
+              <button type="button" class="color-dot" data-color="#10b981" style="background: #10b981;"></button>
+              <button type="button" class="color-dot" data-color="#f59e0b" style="background: #f59e0b;"></button>
+              <button type="button" class="color-dot" data-color="#ef4444" style="background: #ef4444;"></button>
+              <button type="button" class="color-dot" data-color="#8b5cf6" style="background: #8b5cf6;"></button>
+              <button type="button" class="color-dot" data-color="#ec4899" style="background: #ec4899;"></button>
+              <button type="button" class="color-dot" data-color="#64748b" style="background: #64748b;"></button>
+            </div>
+            <input type="hidden" id="col-badge-selected-color" value="#3b82f6" />
+          </div>
+
+          <!-- Quick Presets -->
+          <div class="presets-pill-group">
+            <button type="button" class="preset-pill" onclick="applyColBadgePreset('Concepts', '#3b82f6')">Concepts</button>
+            <button type="button" class="preset-pill" onclick="applyColBadgePreset('Theory', '#8b5cf6')">Theory</button>
+            <button type="button" class="preset-pill" onclick="applyColBadgePreset('Questions', '#f59e0b')">Questions</button>
+            <button type="button" class="preset-pill" onclick="applyColBadgePreset('Revision', '#10b981')">Revision</button>
+            <button type="button" class="preset-pill" onclick="applyColBadgePreset('Urgent', '#ef4444')">Urgent</button>
+          </div>
+        </div>
+
+        <!-- List of Badges that apply to all pages -->
+        <div class="col-badges-list-section">
+          <label class="label-sub">Active Badges on All Pages:</label>
+          <div id="col-badges-items-container" class="col-badges-list">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <div class="modal-footer" style="margin-top: 1.5rem;">
+          <button type="button" class="btn btn-secondary" onclick="switchCollectionModalTab('details')">← Back to Details</button>
+          <button type="button" class="btn btn-primary" onclick="handleFinishCollectionModal()">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Badge Modal (Create & Edit) -->
+  <div id="modal-badge" class="modal-backdrop hidden" onclick="handleModalBackdropClick(event, 'modal-badge')">
+    <div class="modal-card modal-card-sm">
+      <div class="modal-header">
+        <h3 class="modal-title" id="badge-modal-title">Add Task Badge</h3>
+        <button class="icon-btn" onclick="closeModal('modal-badge')"><i data-lucide="x"></i></button>
+      </div>
+      <form onsubmit="handleSaveBadge(event)" class="modal-form">
+        <div class="form-group">
+          <label for="badge-input-label">Badge Label</label>
+          <input type="text" id="badge-input-label" class="input-field" placeholder="e.g. Planning, To Do, Research, Review..." required />
+        </div>
+        
+        <!-- Workflow Presets -->
+        <div class="form-group">
+          <label class="label-sub">Quick Presets:</label>
+          <div class="presets-pill-group">
+            <button type="button" class="preset-pill" onclick="applyBadgePreset('To Do', '#64748b')">To Do</button>
+            <button type="button" class="preset-pill" onclick="applyBadgePreset('In Progress', '#f59e0b')">In Progress</button>
+            <button type="button" class="preset-pill" onclick="applyBadgePreset('Done', '#10b981')">Done</button>
+            <button type="button" class="preset-pill" onclick="applyBadgePreset('Review', '#8b5cf6')">Review</button>
+            <button type="button" class="preset-pill" onclick="applyBadgePreset('Urgent', '#ef4444')">Urgent</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Badge Color</label>
+          <div class="color-palette" id="badge-color-picker">
+            <button type="button" class="color-dot active" data-color="#3b82f6" style="background: #3b82f6;"></button>
+            <button type="button" class="color-dot" data-color="#10b981" style="background: #10b981;"></button>
+            <button type="button" class="color-dot" data-color="#f59e0b" style="background: #f59e0b;"></button>
+            <button type="button" class="color-dot" data-color="#ef4444" style="background: #ef4444;"></button>
+            <button type="button" class="color-dot" data-color="#8b5cf6" style="background: #8b5cf6;"></button>
+            <button type="button" class="color-dot" data-color="#ec4899" style="background: #ec4899;"></button>
+            <button type="button" class="color-dot" data-color="#64748b" style="background: #64748b;"></button>
+          </div>
+          <input type="hidden" id="badge-selected-color" value="#3b82f6" />
+        </div>
+
+        <div class="form-group checkbox-group">
+          <label class="custom-checkbox-label">
+            <input type="checkbox" id="badge-input-completed" />
+            <span>Mark as Completed initially</span>
+          </label>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-badge')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="badge-submit-btn">Save Badge</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Global Quick Search Modal (Ctrl+K) -->
+  <div id="modal-search" class="modal-backdrop hidden" onclick="handleModalBackdropClick(event, 'modal-search')">
+    <div class="modal-card modal-search-card">
+      <div class="search-modal-header">
+        <i data-lucide="search" class="search-modal-icon"></i>
+        <input 
+          type="text" 
+          id="global-search-input" 
+          placeholder="Search collections, page titles, text content, and badges..." 
+          oninput="handleGlobalSearch(this.value)"
+        />
+        <kbd class="kbd-pill">ESC</kbd>
+      </div>
+      <div id="search-results-container" class="search-results-list">
+        <div class="search-empty-state">
+          <span>Type anything to search across your local SQLite workspace</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SQLite Database & Backup Modal -->
+  <div id="modal-db" class="modal-backdrop hidden" onclick="handleModalBackdropClick(event, 'modal-db')">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="flex-align-center gap-2">
+          <i data-lucide="database" class="icon-md color-indigo"></i>
+          <h3 class="modal-title">SQLite 3 Database Manager</h3>
+        </div>
+        <button class="icon-btn" onclick="closeModal('modal-db')"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="db-stats-panel">
+        <div class="db-stat-item">
+          <span class="db-stat-label">Collections in DB</span>
+          <span class="db-stat-val" id="db-stat-collections">0</span>
+        </div>
+        <div class="db-stat-item">
+          <span class="db-stat-label">Pages in DB</span>
+          <span class="db-stat-val" id="db-stat-pages">0</span>
+        </div>
+        <div class="db-stat-item">
+          <span class="db-stat-label">Badges in DB</span>
+          <span class="db-stat-val" id="db-stat-badges">0</span>
+        </div>
+        <div class="db-stat-item">
+          <span class="db-stat-label">SQLite Binary Size</span>
+          <span class="db-stat-val" id="db-stat-size">0 KB</span>
+        </div>
+      </div>
+
+      <div class="db-actions-list">
+        <!-- Download DB -->
+        <div class="db-action-row">
+          <div>
+            <h4 class="db-action-title">Download SQLite .db File</h4>
+            <p class="db-action-desc">Exports the genuine binary SQLite file (compatible with DB Browser for SQLite).</p>
+          </div>
+          <button class="btn btn-secondary" onclick="exportSqliteDatabase()">
+            <i data-lucide="download" class="icon-sm"></i>
+            <span>Export .db</span>
+          </button>
+        </div>
+
+        <!-- Import DB -->
+        <div class="db-action-row">
+          <div>
+            <h4 class="db-action-title">Restore / Upload SQLite .db File</h4>
+            <p class="db-action-desc">Upload any existing Sotion SQLite database file to restore all collections and pages.</p>
+          </div>
+          <div>
+            <input type="file" id="db-file-input" accept=".db,.sqlite,.sqlite3" style="display: none;" onchange="handleImportSqliteFile(event)" />
+            <button class="btn btn-secondary" onclick="document.getElementById('db-file-input').click()">
+              <i data-lucide="upload" class="icon-sm"></i>
+              <span>Import .db</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Reset DB -->
+        <div class="db-action-row border-danger">
+          <div>
+            <h4 class="db-action-title text-danger">Reset Workspace</h4>
+            <p class="db-action-desc">Erases all data and recreates a fresh, empty SQLite database.</p>
+          </div>
+          <button class="btn btn-danger-ghost" onclick="confirmResetDatabase()">
+            <span>Reset Database</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" onclick="closeModal('modal-db')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirm Modal -->
+  <div id="modal-delete" class="modal-backdrop hidden" onclick="handleModalBackdropClick(event, 'modal-delete')">
+    <div class="modal-card modal-card-sm">
+      <div class="modal-header">
+        <div class="flex-align-center gap-2">
+          <i data-lucide="alert-triangle" class="icon-md text-danger"></i>
+          <h3 class="modal-title" id="delete-modal-title">Confirm Deletion</h3>
+        </div>
+        <button class="icon-btn" onclick="closeModal('modal-delete')"><i data-lucide="x"></i></button>
+      </div>
+      <p class="delete-warning-text" id="delete-modal-desc">Are you sure you want to delete this item? This action cannot be undone.</p>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-delete')">Cancel</button>
+        <button type="button" class="btn btn-danger" id="delete-confirm-btn">Delete Permanently</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Date Popover -->
+  <div id="date-popover" class="date-popover-card hidden">
+    <div class="popover-presets">
+      <button type="button" class="preset-btn" onclick="applyDatePreset('today')">Today</button>
+      <button type="button" class="preset-btn" onclick="applyDatePreset('tomorrow')">Tomorrow</button>
+      <button type="button" class="preset-btn" onclick="applyDatePreset('next_week')">+1 Week</button>
+      <button type="button" class="preset-btn text-danger" onclick="applyDatePreset('clear')">Clear Date</button>
+    </div>
+    <div class="popover-divider"></div>
+    <div class="popover-custom">
+      <label class="popover-label">Pick Specific Date</label>
+      <input type="date" id="popover-date-input" onchange="applyCustomDate(this.value)" />
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Application Logic -->
+  <script src="app.js"></script>
+</body>
+</html>
